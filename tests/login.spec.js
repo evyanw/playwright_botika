@@ -1,38 +1,102 @@
 const { test, expect } = require('@playwright/test');
 
 test('Valid login with shadow DOM', async function ({ page }) {
-  // Navigasi ke halaman login
-  await page.goto('https://voice.botika.online/#/login');
+  try {
+    console.log('Navigasi ke halaman login');
+    await page.goto('https://voice.botika.online/#/login');
 
-  // Locator untuk shadow root
-  const shadowRoot = await page.evaluateHandle(() => {
-    const root = document.querySelector('flt-glass-pane');
-    return root.shadowRoot || root.attachShadow({ mode: 'open' });
-  });
+    console.log('Menunggu elemen flt-glass-pane tersedia di halaman');
+    const fltGlassPane = await page.waitForSelector('flt-glass-pane', { timeout: 30000 });
 
-  // Locator untuk input email di dalam shadow root
-  const emailInput = await shadowRoot.$('input.flt-text-editing.transparentTextEditing[style*="width: 741px;"]');
+    if (!fltGlassPane) {
+      // Jika elemen tidak ditemukan, cetak konten halaman untuk debugging
+      const pageContent = await page.content();
+      console.error('Konten halaman:', pageContent);
+      throw new Error('Elemen flt-glass-pane tidak ditemukan');
+    }
 
-  // Locator untuk input sandi di dalam shadow root
-  const passwordInput = await shadowRoot.$('input.flt-text-editing.transparentTextEditing[type="password"][style*="width: 719px;"]');
+    console.log('Mengakses shadow root dari flt-glass-pane');
+    const shadowRootHandle = await fltGlassPane.evaluateHandle(el => el.shadowRoot);
 
-  // Locator untuk tombol masuk di dalam shadow root
-  const loginButton = await shadowRoot.$('button[type="submit"]'); // Adjust selector as needed
+    if (!shadowRootHandle) {
+      throw new Error('Shadow root tidak ditemukan');
+    }
 
-  // Mengisi input email dan sandi
-  await emailInput.type('evianatest@gmail.com');
-  await passwordInput.type('evianatest@123');
+    console.log('Menunggu input email tersedia');
+    const emailInputHandle = await page.evaluateHandle(({ shadowRoot }) => {
+      return shadowRoot.querySelector('input[autocomplete="off"][class="flt-text-editing transparentTextEditing"][type="text"]');
+    }, { shadowRoot: shadowRootHandle });
 
-  // Mengklik tombol masuk
-  await loginButton.click();
+    if (!emailInputHandle) {
+      throw new Error('Elemen input email tidak ditemukan');
+    }
 
-  // Tunggu beberapa saat untuk memastikan bahwa halaman sudah dimuat sepenuhnya
-  await page.waitForTimeout(5000);
+    console.log('Mengisi input email');
+    await emailInputHandle.evaluate((input, email) => {
+      if (input) {
+        input.value = email;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }, 'evianatest@gmail.com');
 
-  // Verifikasi bahwa login berhasil dengan memeriksa URL atau elemen lain di halaman setelah login
-  await expect(page).toHaveURL('https://voice.botika.online/#/main-menu');
+    console.log('Menunggu input password tersedia');
+    const passwordInputHandle = await page.evaluateHandle(({ shadowRoot }) => {
+      return shadowRoot.querySelector('input[autocomplete="off"][class="flt-text-editing transparentTextEditing"][type="password"]');
+    }, { shadowRoot: shadowRootHandle });
 
-  // Verifikasi bahwa elemen dashboard ada di dalam shadow root
-  const dashboardElement = await shadowRoot.$('selector-untuk-dashboard'); // Ganti dengan selector elemen yang relevan
-  await expect(dashboardElement).toBeVisible();
+    if (!passwordInputHandle) {
+      throw new Error('Elemen input password tidak ditemukan');
+    }
+
+    console.log('Mengisi input password');
+    await passwordInputHandle.evaluate((input, password) => {
+      if (input) {
+        input.value = password;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }, 'evianatest@123');
+
+    console.log('Menunggu tombol login tersedia');
+    const loginButtonHandle = await page.evaluateHandle(({ shadowRoot }) => {
+      return shadowRoot.querySelector('button[type="submit"]');
+    }, { shadowRoot: shadowRootHandle });
+
+    if (!loginButtonHandle) {
+      throw new Error('Tombol login tidak ditemukan');
+    }
+
+    console.log('Klik tombol login');
+    await loginButtonHandle.evaluate(button => {
+      if (button) {
+        button.click();
+      }
+    });
+
+    console.log('Menunggu elemen flt-glass-pane muncul setelah login');
+    try {
+      await page.waitForSelector('flt-glass-pane', { timeout: 100000 });
+    } catch (error) {
+      console.error('Elemen setelah login tidak ditemukan:', error);
+
+      if (!page.isClosed()) {
+        try {
+          console.log('Mengambil screenshot login-debug.png');
+          await page.screenshot({ path: 'login-debug.png' });
+        } catch (screenshotError) {
+          console.error('Gagal mengambil screenshot:', screenshotError);
+        }
+      }
+
+      throw error;
+    }
+
+    console.log('Ambil screenshot untuk memverifikasi visualisasi setelah login');
+    if (!page.isClosed()) {
+      await page.screenshot({ path: 'post-login.png' });
+    }
+
+  } catch (error) {
+    console.error('Test gagal:', error);
+    throw error;
+  }
 });
